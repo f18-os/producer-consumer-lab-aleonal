@@ -6,76 +6,80 @@ import numpy as np
 import base64
 import queue
 
-
-# filename of clip to load
-filename = 'clip.mp4'
-
-# shared queues
-extractionQ = Queue()
-displayQ = Queue()
-
-# semaphores & mutex
-fill = threading.Semaphore()
-empty = threading.Semaphore(10)
-
-# threads
-eT = threading.Thread(target=extractFrames(filename, extractionQ)).start()
-gT = threading.Thread(target=grayScale(extractionQ, displayQ)).start()
-dT = threading.Thread(target=displayFrames(displayQ)).start()
-
-def extractFrames(fileName, outputBuffer):
+def extractFrames():
+    global isDone, extractionQ
     count = 0
 
-    vidcap = cv2.VideoCapture(fileName)
+    vidcap = cv2.VideoCapture('clip.mp4')
     success,image = vidcap.read()
     print("Reading frame {} {} ".format(count, success))
 
     while success:
-        empty.acquire()
-        success, jpgImage = cv2.imencode('.jpg', image)
-        jpgAsText = base64.b64encode(jpgImage)
-        outputBuffer.put(jpgAsText)
-        success,image = vidcap.read()
-        print('Reading frame {} {}'.format(count, success))
-        fill.release()
-        count += 1
+            success, jpgImage = cv2.imencode('.jpg', image)
+            jpgAsText = base64.b64encode(jpgImage)
+            empty.acquire()
+            extractionQ.put(jpgAsText)
+            fill.release()
+            success,image = vidcap.read()
+            print('Reading frame {} {}'.format(count, success))
+            count += 1
 
+    isDone = 1;
     print("Frame extraction complete")
 
 
-def grayScale(inputBuffer, outputBuffer):
+def grayScale():
+    global isDone, extractionQ, displayQ
     count = 0
 
-    while(eT.is_alive()):
+    while isDone is not 1 or not extractionQ.empty():
         fill.acquire()
-        frameAsText = inputBuffer.get()
+        frameAsText = extractionQ.get()
+        empty.release()
         jpgRawImage = base64.b64decode(frameAsText)
         jpgImage = np.asarray(bytearray(jpgRawImage), dtype=np.uint8)
         img = cv2.imdecode( jpgImage ,cv2.IMREAD_UNCHANGED)
         grayscaleFrame = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         jpgAsText = base64.b64encode(grayscaleFrame)
-        outputBuffer.put(jpgAsText)
-        empty.release()
+        displayQ.put(jpgAsText)
+        print('Converted frame {}'.format(count))
         count += 1
+
 
     print("Frame conversion complete")
 
 
-def displayFrames(inputBuffer):
+def displayFrames():
+    global isDone, displayQ
     count = 0
 
-    while(gT.is_alive()):
-        if not inputBuffer.empty():
-            frameAsText = inputBuffer.get()
-            jpgRawImage = base64.b64decode(frameAsText)
-            jpgImage = np.asarray(bytearray(jpgRawImage), dtype=np.uint8)
-            img = cv2.imdecode( jpgImage ,cv2.IMREAD_UNCHANGED)
-            print("Displaying frame {}".format(count))
-            cv2.imshow("Video", img)
-            if cv2.waitKey(42) and 0xFF == ord("q"):
-                break
+    while isDone is not 1 or not displayQ.empty():
+        frameAsText = displayQ.get()
+        jpgRawImage = base64.b64decode(frameAsText)
+        jpgImage = np.asarray(bytearray(jpgRawImage), dtype=np.uint8)
+        img = cv2.imdecode( jpgImage ,cv2.IMREAD_UNCHANGED)
+        print("Displaying frame {}".format(count))
+        cv2.imshow("Video", img)
+        if cv2.waitKey(42) and 0xFF == ord("q"):
+            break
 
-            count += 1
+        count += 1
 
     print("Finished displaying all frames")
     cv2.destroyAllWindows()
+
+filename = 'clip.mp4'
+isDone = 0;
+
+# shared queues
+extractionQ = queue.Queue()
+displayQ = queue.Queue()
+
+# semaphores
+fill = threading.Semaphore(0)
+empty = threading.Semaphore(10)
+
+# threads
+eT = threading.Thread(target=extractFrames).start()
+gT = threading.Thread(target=grayScale).start()
+dT = threading.Thread(target=displayFrames).start()
