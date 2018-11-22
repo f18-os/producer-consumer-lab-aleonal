@@ -1,8 +1,8 @@
 Producer Consumer Lab
 
 To run:
-  $ chmod -x project.py
-  $ ./project.py
+-  $ chmod -x project.py
+-  $ ./project.py
 
 This file contains the algorithms to extract frames from a video, apply a grayscale to them, and then display them using CV2. The extraction and filter algorithms are bound by a producer-consumer algorithm which uses 1 queue and two semaphores to work. An additional queue outside of the producer-consumer paradigm is used in order to dump the processed frames so that the display algorithm can display them at a proper framerate.
 
